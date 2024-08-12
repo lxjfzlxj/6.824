@@ -3,7 +3,6 @@ package kvsrv
 import "6.5840/labrpc"
 import "crypto/rand"
 import "math/big"
-import "fmt"
 
 
 type Clerk struct {
@@ -40,9 +39,11 @@ func (ck *Clerk) Get(key string) string {
 	// You will have to modify this function.
 	args := GetArgs{Key: key}
 	reply := GetReply{}
-	ok := ck.server.Call("KVServer.Get", &args, &reply)
-	if !ok {
-		fmt.Printf("Get failed\n")
+	for {
+		ok := ck.server.Call("KVServer.Get", &args, &reply)
+		if ok {
+			break
+		}
 	}
 	return reply.Value
 }
@@ -57,11 +58,21 @@ func (ck *Clerk) Get(key string) string {
 // arguments. and reply must be passed as a pointer.
 func (ck *Clerk) PutAppend(key string, value string, op string) string {
 	// You will have to modify this function.
-	args := PutAppendArgs{Key: key, Value: value}
+	args := PutAppendArgs{Key: key, Value: value, Id: nrand()}
 	reply := PutAppendReply{}
-	ok := ck.server.Call("KVServer." + op, &args, &reply)
-	if !ok {
-		fmt.Printf(op + " failed\n")
+	for {
+		ok := ck.server.Call("KVServer." + op, &args, &reply)					
+		if ok {
+			break
+		}
+	}
+	finishedArgs := FinishedMessageArgs{Id: args.Id}
+	finishedReply := EmptyStruct{}
+	for {
+		ok := ck.server.Call("KVServer.ReportFinished", &finishedArgs, &finishedReply)
+		if ok {
+			break
+		}
 	}
 	return reply.Value
 }

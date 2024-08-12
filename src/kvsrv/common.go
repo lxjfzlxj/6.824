@@ -4,6 +4,7 @@ package kvsrv
 type PutAppendArgs struct {
 	Key   string
 	Value string
+	Id int64
 	// You'll have to add definitions here.
 	// Field names must start with capital letters,
 	// otherwise RPC will break.
@@ -20,4 +21,12 @@ type GetArgs struct {
 
 type GetReply struct {
 	Value string
+}
+
+type FinishedMessageArgs struct {
+	Id int64
+}
+
+type EmptyStruct struct {
+
 }
