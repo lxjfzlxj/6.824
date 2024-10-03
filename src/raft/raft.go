@@ -51,6 +51,7 @@ type ApplyMsg struct {
 }
 
 type State int
+
 const (
 	Leader State = iota
 	Candidate
@@ -72,16 +73,16 @@ type Raft struct {
 	// Your data here (3A, 3B, 3C).
 	// Look at the paper's Figure 2 for a description of what
 	// state a Raft server must maintain.
-	currentTerm int
-	votedFor int
-	log []Entry
-	commitIndex int
-	lastApplied int
-	nextIndex []int
-	matchIndex []int
-	state State
+	currentTerm    int
+	votedFor       int
+	log            []Entry
+	commitIndex    int
+	lastApplied    int
+	nextIndex      []int
+	matchIndex     []int
+	state          State
 	lastBeatenTime time.Time
-	voteNumber int
+	voteNumber     int
 	isGettingVotes bool
 }
 
@@ -117,7 +118,6 @@ func (rf *Raft) persist() {
 	// rf.persister.Save(raftstate, nil)
 }
 
-
 // restore previously persisted state.
 func (rf *Raft) readPersist(data []byte) {
 	if data == nil || len(data) < 1 { // bootstrap without any state?
@@ -138,7 +138,6 @@ func (rf *Raft) readPersist(data []byte) {
 	// }
 }
 
-
 // the service says it has created a snapshot that has
 // all info up to and including index. this means the
 // service no longer needs the log through (and including)
@@ -156,22 +155,21 @@ func (rf *Raft) becomeLeader() {
 	go rf.heartbeatTicker()
 }
 
-
 // example RequestVote RPC arguments structure.
 // field names must start with capital letters!
 type RequestVoteArgs struct {
 	// Your data here (3A, 3B).
-	Term int
-	CandidateId int
+	Term         int
+	CandidateId  int
 	LastLogIndex int
-	LastLogTerm int
+	LastLogTerm  int
 }
 
 // example RequestVote RPC reply structure.
 // field names must start with capital letters!
 type RequestVoteReply struct {
 	// Your data here (3A).
-	Term int
+	Term        int
 	VoteGranted bool
 }
 
@@ -209,16 +207,16 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 }
 
 type AppendEntriesArgs struct {
-	Term int
-	LeaderId int
+	Term         int
+	LeaderId     int
 	PrevLogIndex int
-	PrevLogTerm int
-	Entries []Entry
+	PrevLogTerm  int
+	Entries      []Entry
 	LeaderCommit int
 }
 
 type AppendEntriesReply struct {
-	Term int
+	Term    int
 	Success bool
 }
 
@@ -284,9 +282,8 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 	return ok
 }
 
-
 // the service using Raft (e.g. a k/v server) wants to start
-// agreement on the next command to be 		ed to Raft's log. if this
+// agreement on the next command to be appended to Raft's log. if this
 // server isn't the leader, returns false. otherwise start the
 // agreement and return immediately. there is no guarantee that this
 // command will ever be committed to the Raft log, since the leader
@@ -303,7 +300,6 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	isLeader := true
 
 	// Your code here (3B).
-
 
 	return index, term, isLeader
 }
@@ -346,13 +342,13 @@ func (rf *Raft) handleRequestVoteReply(reply RequestVoteReply) {
 	if rf.isGettingVotes && reply.VoteGranted {
 		rf.voteNumber++
 		// log.Printf("server %d get %d vote(s)\n", rf.me, rf.voteNumber)
-		if rf.voteNumber > len(rf.peers) / 2 {
+		if rf.voteNumber > len(rf.peers)/2 {
 			rf.isGettingVotes = false
 			rf.state = Leader
 			rf.becomeLeader()
 		}
 	}
-	
+
 }
 
 func (rf *Raft) startElection() {
@@ -413,7 +409,7 @@ func (rf *Raft) handleAppendEntriesReply(reply AppendEntriesReply) {
 	defer rf.mu.Unlock()
 	rf.updateCurrentTerm(reply.Term)
 }
-	
+
 func (rf *Raft) heartbeatTicker() {
 	for !rf.killed() && rf.state == Leader {
 		for peerId := 0; peerId < len(rf.peers); peerId++ {
@@ -463,7 +459,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	// start ticker goroutine to start elections
 	go rf.ticker()
-
 
 	return rf
 }
