@@ -411,7 +411,10 @@ func (rf *Raft) handleAppendEntriesReply(reply AppendEntriesReply) {
 }
 
 func (rf *Raft) heartbeatTicker() {
-	for !rf.killed() && rf.state == Leader {
+	for !rf.killed() {
+		if _, isLeader := rf.GetState(); !isLeader {
+			break
+		}
 		for peerId := 0; peerId < len(rf.peers); peerId++ {
 			if peerId != rf.me {
 				go func(peerId int) {
