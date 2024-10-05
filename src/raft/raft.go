@@ -58,7 +58,7 @@ const (
 )
 
 type Entry struct {
-	Term int
+	Term    int
 	Command interface{}
 }
 
@@ -69,7 +69,7 @@ type Raft struct {
 	persister *Persister          // Object to hold this peer's persisted state
 	me        int                 // this peer's index into peers[]
 	dead      int32               // set by Kill()
-	applyCh chan ApplyMsg
+	applyCh   chan ApplyMsg
 
 	// Your data here (3A, 3B, 3C).
 	// Look at the paper's Figure 2 for a description of what
@@ -85,8 +85,8 @@ type Raft struct {
 	lastBeatenTime time.Time
 	voteNumber     int
 	isGettingVotes bool
-	appendCond []*sync.Cond
-	applyCond *sync.Cond
+	appendCond     []*sync.Cond
+	applyCond      *sync.Cond
 }
 
 // return currentTerm and whether this server
@@ -265,7 +265,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 				break
 			}
 			if rf.log[index].Term != entry.Term {
-				rf.log = rf.log[: index]
+				rf.log = rf.log[:index]
 				break
 			}
 			index++
@@ -280,7 +280,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		}
 		DPrintf("[Server %d] commitindex = %d\n", rf.me, rf.commitIndex)
 		if args.LeaderCommit > rf.commitIndex {
-			rf.commitIndex = min(args.LeaderCommit, len(rf.log) - 1)
+			rf.commitIndex = min(args.LeaderCommit, len(rf.log)-1)
 			DPrintf("[Server %d] commitindex => %d", rf.me, rf.commitIndex)
 			rf.applyCond.Signal()
 		}
@@ -438,7 +438,7 @@ func (rf *Raft) ticker() {
 		// Your code here (3A)
 		// Check if a leader election should be started.
 		// DPrintf("[Server %d] check condition %v %v\n", rf.me, rf.lastBeatenTime, lastSleepTime)
-		
+
 		// DPrintf("[server %d lock]2\n",rf.me)
 		_, isLeader := rf.GetState()
 		rf.mu.Lock()
@@ -481,7 +481,7 @@ func (rf *Raft) handleAppendEntriesReply(ok bool, target int, args AppendEntries
 	} else {
 		rf.nextIndex[target]--
 	}
-	DPrintf("[Leader] Server %d's nextindex is %d\n",target, rf.nextIndex[target])
+	DPrintf("[Leader] Server %d's nextindex is %d\n", target, rf.nextIndex[target])
 }
 
 func (rf *Raft) heartbeatTicker() {
@@ -542,7 +542,7 @@ func (rf *Raft) commitTicker() {
 					}
 				}
 			}
-			if num > len(rf.peers) / 2 {
+			if num > len(rf.peers)/2 {
 				rf.commitIndex++
 				rf.applyCond.Signal()
 			} else {
