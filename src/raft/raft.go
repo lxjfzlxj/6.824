@@ -19,12 +19,14 @@ package raft
 
 import (
 	//	"bytes"
+	"bytes"
 	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	//	"6.5840/labgob"
+	"6.5840/labgob"
 	"6.5840/labrpc"
 )
 
@@ -113,12 +115,13 @@ func (rf *Raft) GetState() (int, bool) {
 func (rf *Raft) persist() {
 	// Your code here (3C).
 	// Example:
-	// w := new(bytes.Buffer)
-	// e := labgob.NewEncoder(w)
-	// e.Encode(rf.xxx)
-	// e.Encode(rf.yyy)
-	// raftstate := w.Bytes()
-	// rf.persister.Save(raftstate, nil)
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	e.Encode(rf.currentTerm)
+	e.Encode(rf.votedFor)
+	e.Encode(rf.log)
+	raftstate := w.Bytes()
+	rf.persister.Save(raftstate, nil)
 }
 
 // restore previously persisted state.
@@ -128,17 +131,18 @@ func (rf *Raft) readPersist(data []byte) {
 	}
 	// Your code here (3C).
 	// Example:
-	// r := bytes.NewBuffer(data)
-	// d := labgob.NewDecoder(r)
-	// var xxx
-	// var yyy
-	// if d.Decode(&xxx) != nil ||
-	//    d.Decode(&yyy) != nil {
-	//   error...
-	// } else {
-	//   rf.xxx = xxx
-	//   rf.yyy = yyy
-	// }
+	r := bytes.NewBuffer(data)
+	d := labgob.NewDecoder(r)
+	var currentTerm int
+	var votedFor int
+	var log []Entry
+	if d.Decode(&currentTerm) != nil || d.Decode(&votedFor) != nil || d.Decode(&log) != nil {
+		panic("decode failed")
+	} else {
+		rf.currentTerm = currentTerm
+		rf.votedFor = votedFor
+		rf.log = log
+	}
 }
 
 // the service says it has created a snapshot that has
@@ -188,6 +192,7 @@ func (rf *Raft) updateCurrentTerm(term int) {
 	if term > rf.currentTerm {
 		rf.currentTerm = term
 		rf.votedFor = -1
+		rf.persist()
 		if rf.state == Leader {
 			DPrintf("Server %d is not the leader\n", rf.me)
 		}
@@ -213,6 +218,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		if args.LastLogTerm > myLastTerm || args.LastLogTerm == myLastTerm && args.LastLogIndex >= myLastIndex {
 			DPrintf("Server %d vote for %d (term = %d)\n", rf.me, args.CandidateId, rf.currentTerm)
 			rf.votedFor = args.CandidateId
+			rf.persist()
 			reply.VoteGranted = true
 			rf.lastBeatenTime = time.Now()
 			return
@@ -233,6 +239,9 @@ type AppendEntriesArgs struct {
 type AppendEntriesReply struct {
 	Term    int
 	Success bool
+	XTerm   int
+	XIndex  int
+	XLen    int
 }
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
@@ -248,6 +257,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	}
 	if args.Term < rf.currentTerm {
 		reply.Success = false
+		reply.XIndex, reply.XTerm, reply.XLen = -1, -1, -1
 		return
 	} else {
 		rf.updateCurrentTerm(args.Term)
@@ -256,6 +266,18 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		reply.Success = true
 	} else {
 		reply.Success = false
+		if args.PrevLogIndex >= len(rf.log) {
+			reply.XTerm, reply.XIndex = -1, -1
+			reply.XLen = len(rf.log)
+		} else {
+			reply.XTerm = rf.log[args.PrevLogIndex].Term
+			for index := args.PrevLogIndex; true; index-- {
+				if index < 0 || rf.log[index].Term != rf.log[args.PrevLogIndex].Term {
+					reply.XIndex = index + 1
+					break
+				}
+			}
+		}
 	}
 	DPrintf("[Server %d] handle appendentries result: %v", rf.me, reply.Success)
 	if reply.Success {
@@ -266,6 +288,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 			}
 			if rf.log[index].Term != entry.Term {
 				rf.log = rf.log[:index]
+				rf.persist()
 				break
 			}
 			index++
@@ -274,6 +297,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		for _, entry := range args.Entries {
 			if index >= len(rf.log) {
 				rf.log = append(rf.log, entry)
+				rf.persist()
 				// DPrintf("[Server %d] append %v", rf.me, entry)
 			}
 			index++
@@ -351,6 +375,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	index = len(rf.log)
 	term = rf.currentTerm
 	rf.log = append(rf.log, Entry{Term: term, Command: command})
+	rf.persist()
 	for peerId := 0; peerId < len(rf.peers); peerId++ {
 		if peerId != rf.me {
 			rf.appendCond[peerId].Signal()
@@ -411,6 +436,7 @@ func (rf *Raft) startElection() {
 	rf.currentTerm++
 	rf.state = Candidate
 	rf.votedFor = rf.me
+	rf.persist()
 	rf.voteNumber = 1
 	rf.lastBeatenTime = time.Now()
 	rf.isGettingVotes = true
@@ -468,18 +494,50 @@ func (rf *Raft) constructAppendEntriesArgs(target int, entries []Entry) AppendEn
 	return args
 }
 
+func (rf *Raft) findLastPosForTerm(term int) int {
+	lBound := 1
+	rBound := len(rf.log) - 1
+	for lBound < rBound {
+		mid := (lBound + rBound + 1) / 2
+		if rf.log[mid].Term <= term {
+			lBound = mid
+		} else {
+			rBound = mid - 1
+		}
+	}
+	if rf.log[lBound].Term == term {
+		return lBound
+	} else {
+		return -1
+	}
+}
+
 func (rf *Raft) handleAppendEntriesReply(ok bool, target int, args AppendEntriesArgs, reply AppendEntriesReply) {
 	if !ok {
 		return
 	}
 	DPrintf("handle appendentries from server %d: reply: %v", target, reply)
 	rf.updateCurrentTerm(reply.Term)
+	if rf.state != Leader {
+		return
+	}
 	if reply.Success {
 		rf.matchIndex[target] = args.PrevLogIndex + len(args.Entries)
 		DPrintf("[Leader] Server %d's matchindex become %d + %d = %d\n", target, args.PrevLogIndex, len(args.Entries), rf.matchIndex[target])
 		rf.nextIndex[target] = rf.matchIndex[target] + 1
 	} else {
-		rf.nextIndex[target]--
+		if reply.XTerm == -1 {
+			if reply.XLen != -1 {
+				rf.nextIndex[target] = reply.XLen
+			}
+		} else {
+			pos := rf.findLastPosForTerm(reply.XTerm)
+			if pos == -1 {
+				rf.nextIndex[target] = reply.XIndex
+			} else {
+				rf.nextIndex[target] = pos
+			}
+		}
 	}
 	DPrintf("[Leader] Server %d's nextindex is %d\n", target, rf.nextIndex[target])
 }
@@ -504,7 +562,7 @@ func (rf *Raft) heartbeatTicker() {
 				}(peerId)
 			}
 		}
-		time.Sleep(time.Duration(150) * time.Millisecond)
+		time.Sleep(time.Duration(50) * time.Millisecond)
 	}
 }
 
