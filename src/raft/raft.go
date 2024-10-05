@@ -346,6 +346,8 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	if !isLeader {
 		return index, term, isLeader
 	}
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
 	index = len(rf.log)
 	term = rf.currentTerm
 	rf.log = append(rf.log, Entry{Term: term, Command: command})
